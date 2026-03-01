@@ -3,7 +3,14 @@ import { generateSignal } from '@/lib/services/signalGenerator'
 import { saveSignal } from '@/lib/database/supabase'
 import { TradingPair, Timeframe } from '@/lib/types'
 
-const VALID_PAIRS: TradingPair[] = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'ADA/USDT']
+const VALID_PAIRS: TradingPair[] = [
+  'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'ADA/USDT',
+  'XRP/USDT', 'DOT/USDT', 'DOGE/USDT', 'AVAX/USDT', 'MATIC/USDT',
+  'LINK/USDT', 'UNI/USDT', 'ATOM/USDT', 'LTC/USDT', 'ETC/USDT',
+  'XLM/USDT', 'ALGO/USDT', 'VET/USDT', 'FIL/USDT', 'TRX/USDT',
+  'AAVE/USDT', 'SAND/USDT', 'MANA/USDT', 'AXS/USDT', 'THETA/USDT',
+  'FTM/USDT', 'NEAR/USDT', 'APE/USDT', 'GALA/USDT', 'CHZ/USDT',
+]
 const VALID_TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D']
 
 export async function GET(request: NextRequest) {

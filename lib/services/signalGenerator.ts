@@ -234,109 +234,123 @@ export async function generateSignal(
   pair: TradingPair,
   timeframe: Timeframe
 ): Promise<Signal> {
-  // Fetch market data
-  const ohlcv = await fetchOHLCV(pair, timeframe, 200)
-  const currentPrice = await getCurrentPrice(pair)
-  
-  // Extract price and volume data
-  const closePrices = ohlcv.map(c => c.close)
-  const volumes = ohlcv.map(c => c.volume)
-  
-  // Calculate technical indicators
-  const rsi = calculateRSI(closePrices, 14)
-  const macd = calculateMACD(closePrices)
-  const ema20 = calculateEMA(closePrices, 20)
-  const ema50 = calculateEMA(closePrices, 50)
-  const ema200 = calculateEMA(closePrices, 200)
-  const bollingerBands = calculateBollingerBands(closePrices, 20, 2)
-  
-  // Pattern recognition
-  const supportResistance = identifySupportResistance(ohlcv, 50)
-  const volumeAnalysis = analyzeVolume(volumes, 20)
-  const trend = detectTrend(ema20, ema50)
-  
-  // Detect breakout (compare current price with previous)
-  const previousPrice = closePrices[closePrices.length - 2]
-  const breakout = detectBreakout(currentPrice, supportResistance, previousPrice)
-  
-  // Check confluence for BUY and SELL
-  const buyConfluence = checkBuyConfluence(
-    rsi,
-    macd,
-    currentPrice,
-    ema20,
-    ema50,
-    bollingerBands,
-    volumeAnalysis.isVolumeSpike,
-    breakout,
-    supportResistance.resistance
-  )
-  
-  const sellConfluence = checkSellConfluence(
-    rsi,
-    macd,
-    currentPrice,
-    ema20,
-    ema50,
-    bollingerBands,
-    volumeAnalysis.isVolumeSpike,
-    breakout,
-    supportResistance.support
-  )
-  
-  // Determine signal type
-  const signalType = determineSignalType(buyConfluence.count, sellConfluence.count)
-  
-  // Get confirmations based on signal type
-  const confirmations = signalType === 'BUY' 
-    ? buyConfluence.confirmations 
-    : signalType === 'SELL' 
-    ? sellConfluence.confirmations 
-    : []
-  
-  const confirmationCount = confirmations.length
-  
-  // Calculate risk parameters
-  const entryPrice = currentPrice
-  const stopLoss = calculateStopLoss(entryPrice, signalType)
-  const { tp1, tp2 } = calculateTakeProfits(entryPrice, stopLoss, signalType)
-  const riskRewardRatio = calculateRiskRewardRatio(entryPrice, stopLoss, tp2, signalType)
-  const winProbability = calculateWinProbability(confirmationCount)
-  const riskLevel = determineRiskLevel(confirmationCount, riskRewardRatio)
-  const tradeType = determineTradeType(timeframe)
-  
-  // Get AI analysis
-  const indicatorData: IndicatorData = {
-    rsi,
-    macd,
-    ema20,
-    ema50,
-    ema200,
-    bollingerBands,
-    trend,
-    volumeAnalysis,
+  try {
+    // Fetch market data - request 250 but use whatever we get
+    const ohlcv = await fetchOHLCV(pair, timeframe, 250)
+    
+    // Check if we have enough data (minimum 50 candles)
+    if (ohlcv.length < 50) {
+      throw new Error(`Insufficient data: only ${ohlcv.length} candles available (minimum 50 required)`)
+    }
+    
+    console.log(`Fetched ${ohlcv.length} candles for ${pair} ${timeframe}`)
+    
+    const currentPrice = await getCurrentPrice(pair)
+    
+    // Extract price and volume data
+    const closePrices = ohlcv.map(c => c.close)
+    const volumes = ohlcv.map(c => c.volume)
+    
+    // Calculate technical indicators with available data
+    const rsi = calculateRSI(closePrices, Math.min(14, Math.floor(closePrices.length / 3)))
+    const macd = calculateMACD(closePrices)
+    const ema20 = calculateEMA(closePrices, Math.min(20, Math.floor(closePrices.length / 4)))
+    const ema50 = calculateEMA(closePrices, Math.min(50, Math.floor(closePrices.length / 2)))
+    const ema200 = closePrices.length >= 200 ? calculateEMA(closePrices, 200) : ema50
+    const bollingerBands = calculateBollingerBands(closePrices, Math.min(20, Math.floor(closePrices.length / 4)), 2)
+    
+    // Pattern recognition
+    const lookbackPeriod = Math.min(50, Math.floor(ohlcv.length / 2))
+    const supportResistance = identifySupportResistance(ohlcv, lookbackPeriod)
+    const volumeAnalysis = analyzeVolume(volumes, Math.min(20, Math.floor(volumes.length / 3)))
+    const trend = detectTrend(ema20, ema50)
+    
+    // Detect breakout (compare current price with previous)
+    const previousPrice = closePrices[closePrices.length - 2]
+    const breakout = detectBreakout(currentPrice, supportResistance, previousPrice)
+    
+    // Check confluence for BUY and SELL
+    const buyConfluence = checkBuyConfluence(
+      rsi,
+      macd,
+      currentPrice,
+      ema20,
+      ema50,
+      bollingerBands,
+      volumeAnalysis.isVolumeSpike,
+      breakout,
+      supportResistance.resistance
+    )
+    
+    const sellConfluence = checkSellConfluence(
+      rsi,
+      macd,
+      currentPrice,
+      ema20,
+      ema50,
+      bollingerBands,
+      volumeAnalysis.isVolumeSpike,
+      breakout,
+      supportResistance.support
+    )
+    
+    // Determine signal type
+    const signalType = determineSignalType(buyConfluence.count, sellConfluence.count)
+    
+    // Get confirmations based on signal type
+    const confirmations = signalType === 'BUY' 
+      ? buyConfluence.confirmations 
+      : signalType === 'SELL' 
+      ? sellConfluence.confirmations 
+      : []
+    
+    const confirmationCount = confirmations.length
+    
+    // Calculate risk parameters
+    const entryPrice = currentPrice
+    const stopLoss = calculateStopLoss(entryPrice, signalType)
+    const { tp1, tp2 } = calculateTakeProfits(entryPrice, stopLoss, signalType)
+    const riskRewardRatio = calculateRiskRewardRatio(entryPrice, stopLoss, tp2, signalType)
+    const winProbability = calculateWinProbability(confirmationCount)
+    const riskLevel = determineRiskLevel(confirmationCount, riskRewardRatio)
+    const tradeType = determineTradeType(timeframe)
+    
+    // Get AI analysis
+    const indicatorData: IndicatorData = {
+      rsi,
+      macd,
+      ema20,
+      ema50,
+      ema200,
+      bollingerBands,
+      trend,
+      volumeAnalysis,
+    }
+    
+    const aiAnalysis = await analyzeMarket(indicatorData)
+    
+    // Construct signal
+    const signal: Signal = {
+      pair,
+      timeframe,
+      timestamp: Date.now(),
+      trend,
+      signalType,
+      entryPrice,
+      stopLoss,
+      takeProfit1: tp1,
+      takeProfit2: tp2,
+      riskRewardRatio,
+      winProbability,
+      analysisSummary: aiAnalysis.summary,
+      indicatorConfirmations: confirmations,
+      riskLevel,
+      tradeType,
+    }
+    
+    return signal
+  } catch (error) {
+    console.error(`Error generating signal for ${pair} ${timeframe}:`, error)
+    throw error
   }
-  
-  const aiAnalysis = await analyzeMarket(indicatorData)
-  
-  // Construct signal
-  const signal: Signal = {
-    pair,
-    timeframe,
-    timestamp: Date.now(),
-    trend,
-    signalType,
-    entryPrice,
-    stopLoss,
-    takeProfit1: tp1,
-    takeProfit2: tp2,
-    riskRewardRatio,
-    winProbability,
-    analysisSummary: aiAnalysis.summary,
-    indicatorConfirmations: confirmations,
-    riskLevel,
-    tradeType,
-  }
-  
-  return signal
 }

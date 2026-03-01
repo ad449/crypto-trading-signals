@@ -1,7 +1,13 @@
 // Core data models for crypto trading signals
 
-// Trading pair configuration
-export type TradingPair = 'BTC/USDT' | 'ETH/USDT' | 'BNB/USDT' | 'SOL/USDT' | 'ADA/USDT'
+// Trading pair configuration - Expanded list
+export type TradingPair = 
+  | 'BTC/USDT' | 'ETH/USDT' | 'BNB/USDT' | 'SOL/USDT' | 'ADA/USDT'
+  | 'XRP/USDT' | 'DOT/USDT' | 'DOGE/USDT' | 'AVAX/USDT' | 'MATIC/USDT'
+  | 'LINK/USDT' | 'UNI/USDT' | 'ATOM/USDT' | 'LTC/USDT' | 'ETC/USDT'
+  | 'XLM/USDT' | 'ALGO/USDT' | 'VET/USDT' | 'FIL/USDT' | 'TRX/USDT'
+  | 'AAVE/USDT' | 'SAND/USDT' | 'MANA/USDT' | 'AXS/USDT' | 'THETA/USDT'
+  | 'FTM/USDT' | 'NEAR/USDT' | 'APE/USDT' | 'GALA/USDT' | 'CHZ/USDT'
 
 // Timeframe options
 export type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | '1D'

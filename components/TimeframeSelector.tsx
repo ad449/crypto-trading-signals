@@ -1,3 +1,5 @@
+'use client'
+
 import { Timeframe } from '@/lib/types'
 
 interface TimeframeSelectorProps {
@@ -5,27 +7,31 @@ interface TimeframeSelectorProps {
   onChange: (timeframe: Timeframe) => void
 }
 
-const TIMEFRAMES: Timeframe[] = ['1m', '5m', '15m', '1h', '4h', '1D']
+const TIMEFRAMES: { value: Timeframe; label: string }[] = [
+  { value: '1m', label: '1m' },
+  { value: '5m', label: '5m' },
+  { value: '15m', label: '15m' },
+  { value: '1h', label: '1H' },
+  { value: '4h', label: '4H' },
+  { value: '1D', label: '1D' },
+]
 
 export default function TimeframeSelector({ value, onChange }: TimeframeSelectorProps) {
   return (
-    <div>
-      <label className="block text-sm text-gray-400 mb-2">Timeframe</label>
-      <div className="flex gap-2">
-        {TIMEFRAMES.map((tf) => (
-          <button
-            key={tf}
-            onClick={() => onChange(tf)}
-            className={`px-4 py-2 rounded-lg font-semibold transition-colors ${
-              value === tf
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-            }`}
-          >
-            {tf}
-          </button>
-        ))}
-      </div>
+    <div className="flex items-center gap-1 bg-gray-800 rounded p-1 border border-gray-700">
+      {TIMEFRAMES.map((tf) => (
+        <button
+          key={tf.value}
+          onClick={() => onChange(tf.value)}
+          className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${
+            value === tf.value
+              ? 'bg-blue-600 text-white'
+              : 'text-gray-400 hover:text-white hover:bg-gray-700'
+          }`}
+        >
+          {tf.label}
+        </button>
+      ))}
     </div>
   )
 }
