@@ -48,9 +48,28 @@ function timeframeToBinanceInterval(timeframe: Timeframe): string {
   return mapping[timeframe]
 }
 
+// Convert timeframe to CryptoCompare aggregate
+function timeframeToCryptoCompareAggregate(timeframe: Timeframe): { type: string; aggregate: number } {
+  const mapping: Record<Timeframe, { type: string; aggregate: number }> = {
+    '1m': { type: 'minute', aggregate: 1 },
+    '5m': { type: 'minute', aggregate: 5 },
+    '15m': { type: 'minute', aggregate: 15 },
+    '1h': { type: 'hour', aggregate: 1 },
+    '4h': { type: 'hour', aggregate: 4 },
+    '1D': { type: 'day', aggregate: 1 },
+  }
+  return mapping[timeframe]
+}
+
 // Convert trading pair to Binance symbol format (remove slash)
 function pairToBinanceSymbol(pair: TradingPair): string {
   return pair.replace('/', '')
+}
+
+// Convert trading pair to CryptoCompare format
+function pairToCryptoCompare(pair: TradingPair): { fsym: string; tsym: string } {
+  const [base, quote] = pair.split('/')
+  return { fsym: base, tsym: quote }
 }
 
 // Convert trading pair to CoinGecko ID format
@@ -141,6 +160,51 @@ async function retryWithBackoff<T>(
   throw new Error('Max retries exceeded')
 }
 
+// Fetch OHLCV from CryptoCompare API (best for Vercel)
+async function fetchOHLCVFromCryptoCompare(
+  pair: TradingPair,
+  timeframe: Timeframe,
+  limit: number
+): Promise<OHLCV[]> {
+  const { fsym, tsym } = pairToCryptoCompare(pair)
+  const { type, aggregate } = timeframeToCryptoCompareAggregate(timeframe)
+  
+  let endpoint = ''
+  if (type === 'minute') {
+    endpoint = `histominute`
+  } else if (type === 'hour') {
+    endpoint = `histohour`
+  } else {
+    endpoint = `histoday`
+  }
+  
+  const url = `https://min-api.cryptocompare.com/data/v2/${endpoint}?fsym=${fsym}&tsym=${tsym}&limit=${limit}&aggregate=${aggregate}`
+
+  const response = await fetch(url)
+  
+  if (!response.ok) {
+    throw new Error(`CryptoCompare API error: ${response.status} ${response.statusText}`)
+  }
+
+  const result = await response.json()
+  
+  if (result.Response === 'Error') {
+    throw new Error(`CryptoCompare API error: ${result.Message}`)
+  }
+
+  // Transform CryptoCompare response to OHLCV format
+  const ohlcv: OHLCV[] = result.Data.Data.map((candle: any) => ({
+    timestamp: candle.time * 1000, // Convert to milliseconds
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    volume: candle.volumeto, // Volume in quote currency
+  }))
+
+  return ohlcv
+}
+
 // Fetch OHLCV from CoinGecko API (fallback)
 async function fetchOHLCVFromCoinGecko(
   pair: TradingPair,
@@ -160,7 +224,6 @@ async function fetchOHLCVFromCoinGecko(
   const data = await response.json()
   
   // Transform CoinGecko response to OHLCV format
-  // CoinGecko returns: [timestamp, open, high, low, close]
   const ohlcv: OHLCV[] = data.slice(-limit).map((candle: number[]) => ({
     timestamp: candle[0],
     open: candle[1],
@@ -173,7 +236,7 @@ async function fetchOHLCVFromCoinGecko(
   return ohlcv
 }
 
-// Fetch OHLCV from Binance API (primary)
+// Fetch OHLCV from Binance API (primary, but may be blocked on Vercel)
 async function fetchOHLCVFromBinance(
   pair: TradingPair,
   timeframe: Timeframe,
@@ -205,7 +268,8 @@ async function fetchOHLCVFromBinance(
 }
 
 /**
- * Fetch OHLCV (candlestick) data from Binance API with retry and fallback
+ * Fetch OHLCV (candlestick) data with multiple fallbacks
+ * Priority: CryptoCompare (works on Vercel) -> Binance -> CoinGecko
  * @param pair Trading pair (e.g., 'BTC/USDT')
  * @param timeframe Timeframe for candles (e.g., '1h')
  * @param limit Number of candles to fetch (default: 100)
@@ -227,25 +291,35 @@ export async function fetchOHLCV(
 
   // Queue the request to respect rate limiting
   const ohlcv = await queueRequest(async () => {
+    // Try CryptoCompare first (works best on Vercel)
     try {
-      // Try Binance API with retry logic
-      return await retryWithBackoff(() => fetchOHLCVFromBinance(pair, timeframe, limit))
-    } catch (binanceError) {
-      console.error('Binance API failed after retries, falling back to CoinGecko:', binanceError)
+      console.log('Trying CryptoCompare API...')
+      return await retryWithBackoff(() => fetchOHLCVFromCryptoCompare(pair, timeframe, limit))
+    } catch (cryptoCompareError) {
+      console.error('CryptoCompare API failed:', cryptoCompareError)
       
-      // Fallback to CoinGecko API with retry logic
+      // Try Binance API
       try {
-        return await retryWithBackoff(() => fetchOHLCVFromCoinGecko(pair, timeframe, limit))
-      } catch (coinGeckoError) {
-        console.error('CoinGecko API also failed:', coinGeckoError)
+        console.log('Trying Binance API...')
+        return await retryWithBackoff(() => fetchOHLCVFromBinance(pair, timeframe, limit))
+      } catch (binanceError) {
+        console.error('Binance API failed:', binanceError)
         
-        // If both APIs fail, return cached data if available (even if stale)
-        if (cached) {
-          console.warn('Returning stale cached data due to API failures')
-          return cached.data
+        // Fallback to CoinGecko API
+        try {
+          console.log('Trying CoinGecko API...')
+          return await retryWithBackoff(() => fetchOHLCVFromCoinGecko(pair, timeframe, limit))
+        } catch (coinGeckoError) {
+          console.error('CoinGecko API also failed:', coinGeckoError)
+          
+          // If all APIs fail, return cached data if available (even if stale)
+          if (cached) {
+            console.warn('Returning stale cached data due to API failures')
+            return cached.data
+          }
+          
+          throw new Error(`All data sources failed. CryptoCompare: ${cryptoCompareError}. Binance: ${binanceError}. CoinGecko: ${coinGeckoError}`)
         }
-        
-        throw new Error(`All data sources failed. Binance: ${binanceError}. CoinGecko: ${coinGeckoError}`)
       }
     }
   })
@@ -265,17 +339,33 @@ export async function fetchOHLCV(
  * @returns Current price
  */
 export async function getCurrentPrice(pair: TradingPair): Promise<number> {
-  const symbol = pairToBinanceSymbol(pair)
-  const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`
+  // Try CryptoCompare first
+  try {
+    const { fsym, tsym } = pairToCryptoCompare(pair)
+    const url = `https://min-api.cryptocompare.com/data/price?fsym=${fsym}&tsyms=${tsym}`
+    
+    const response = await fetch(url)
+    
+    if (!response.ok) {
+      throw new Error(`CryptoCompare API error: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    return data[tsym]
+  } catch (error) {
+    // Fallback to Binance
+    const symbol = pairToBinanceSymbol(pair)
+    const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`
 
-  const response = await fetch(url)
-  
-  if (!response.ok) {
-    throw new Error(`Binance API error: ${response.status} ${response.statusText}`)
+    const response = await fetch(url)
+    
+    if (!response.ok) {
+      throw new Error(`Binance API error: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    return parseFloat(data.price)
   }
-
-  const data = await response.json()
-  return parseFloat(data.price)
 }
 
 /**
